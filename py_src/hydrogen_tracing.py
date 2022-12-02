@@ -75,7 +75,7 @@ class HOchainFinder():
                 if is_special(ii_snapshot, oxygen_index):
                     neighbours = self.current_neighbourlist.get_neighbors(oxygen_index)[0]
                     specials_count += 1
-                    special_sites.append(np.append(neighbours, oxygen_index))
+                    special_sites.append(np.append(neighbours, oxygen_index).tolist())
             
             special_list.append(special_sites)
             # print(ii_snap, ": %u"%specials_count)        
@@ -286,7 +286,7 @@ class HOchainFinder():
                         hops = self.find_hopping(special_config[-1], ii_step, counter=0, verbose=True)
                         hop_list.append(hops)
 
-        return np.asarray(hops)        
+        return np.asarray(hop_list)        
 
     def plot_special_config(self, snapshot, cut_offs=None):
         if cut_offs is None:
