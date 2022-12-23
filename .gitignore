@@ -129,3 +129,20 @@ dmypy.json
 .pyre/
 
 *.pdf
+*.png
+*.lammpstrj
+*.txt
+*.np
+*.npy
+*.json
+
+# Ignore data and process files
+*.xyz
+*.in
+*.list
+*.dat
+*.data
+*.his
+*.pp
+*HILLS
+*COLVAR
