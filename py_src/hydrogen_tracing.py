@@ -17,6 +17,9 @@ class HOchainFinder():
         self.current_neighbourlist = None
         self.previous_neighbourlist = None
         
+        # This is 
+        self.skip_flag = False
+
         self._init_neighbourlists()
         
     def _init_neighbourlists(self):
@@ -169,8 +172,11 @@ class HOchainFinder():
         if counter == 0:
             if (('OTi' in cur_form) and not ('H' in cur_form)):
                 # Simply ignore OTiX
+                # If it shouldn't be ignored, just comment return statement
                 return -1
-            if 'HOTi' in cur_form and (('OTi' in prev_form) and not ('H' in prev_form)):
+                self.skip_flag = True
+    
+            if ('HOTi' in cur_form) and (('OTi' in prev_form) and not ('H' in prev_form)):
                 # Simply ignore OTiX
                 self.current_neighbourlist.update(self.trajectory[cur_step+1])
                 neighs = self.current_neighbourlist.get_neighbors(oxygen_index)[0]
@@ -186,29 +192,45 @@ class HOchainFinder():
             
         if ("H2O" in cur_form) and ('HOTi' in prev_form):
             # Special case where path is H20 -> HOTi + H but on other site HOTi + H -> H20
-            return -7
+            if not self.skip_flag:
+                return counter-1
 
         if verbose: # len(which_are_gone):
+            print("Gone: ")
             print(self.trajectory[0][which_are_gone].get_chemical_formula())
-        
         
         # Now it should be HOTiX
         if len(which_are_gone) != 1:
             # Optimally this should only be an H atom
+
             if len(which_are_gone) != 0:
-                return -5 # TODO: If not, find H in gone atoms, surface hopping
-            # Nothing left, so H atom must have been added
-            which_are_gone = which_are_added
+                # If not, remove anything that is not H
+                buff_gone = []
+                ts_0 = self.trajectory[0]
+                for gone in which_are_gone:
+                    if ts_0[gone].symbol == 'H':
+                        buff_gone.append(gone)
+                which_are_gone = buff_gone
+
             if len(which_are_gone) == 0:
-                # For some reason: no change
-                return -6 # fixed
-            else:
-                return -8 # fixed
+                # For some reason: no change, usually flyby
+                return -6
+        
+        # Now length is definitely one
+        if self.trajectory[0][which_are_gone].get_chemical_symbols()[0] != 'H':
+            # print("Flyby")
+            # print(self.trajectory[0][which_are_gone].get_chemical_symbols()[0])
+            # For some reason: no change, usually flyby
+            return -6
+
             
         prev_bound_oxygen = self.previous_neighbourlist.get_neighbors(which_are_gone[0])[0]
         if len(prev_bound_oxygen) > 1 and (counter == 0):
-            # Flyby of H20 at TiO site
-            return -3
+            gone_symbs = self.trajectory[0][prev_bound_oxygen].get_chemical_formula()
+            if len(prev_bound_oxygen) > 2 or gone_symbs!='O2':
+                return -3
+
+            prev_bound_oxygen = np.setdiff1d(prev_bound_oxygen, oxygen_index)
         
         if verbose:
             print("####################")
@@ -233,6 +255,8 @@ class HOchainFinder():
             if not (cur_bound == 'O2'):
                 # This should never happen
                 return -4 # fixed
+            if verbose:
+                print("Moved to 2 step")
             return self.find_hopping(oxygen_index, cur_step+1, counter, prev_step, verbose=verbose)
         
         # Find all neighbours of that oxygen
@@ -251,6 +275,7 @@ class HOchainFinder():
         cur_oxy_symbols = cur_oxy_bond.get_chemical_formula(mode='hill')
         # print(cur_oxy_symbols)
         if 'HOTi' in cur_oxy_symbols:
+            self.skip_flag = False
             return counter
         elif 'H2O' in cur_oxy_symbols:
             if counter < 100:
