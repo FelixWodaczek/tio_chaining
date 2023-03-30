@@ -16,9 +16,11 @@ class HOchainFinder():
         
         self.current_neighbourlist = None
         self.previous_neighbourlist = None
+        self.distance_neighbourlist = None
         
         # This is 
         self.skip_flag = False
+        self.backwards_flag = False
 
         self._init_neighbourlists()
         
@@ -26,6 +28,7 @@ class HOchainFinder():
         self.cut_offs = natural_cutoffs(self.trajectory[0], mult=self.cutoff_mult)
         self.current_neighbourlist = NeighborList(self.cut_offs, bothways=True, self_interaction=False)
         self.previous_neighbourlist = NeighborList(self.cut_offs, bothways=True, self_interaction=False)
+        self.distance_neighbourlist = NeighborList([10.]*len(self.trajectory[0]), bothways=False, self_interaction=False)
         
     def _is_single_ti_bond(self, ii_snap, oxygen_index, **kwargs):
         neighbours = self.current_neighbourlist.get_neighbors(oxygen_index)[0]
@@ -36,7 +39,7 @@ class HOchainFinder():
         neighbours = self.current_neighbourlist.get_neighbors(oxygen_index)[0]
         symbols = self.trajectory[ii_snap][neighbours].get_chemical_formula(mode='hill')
         
-        if 'Ti' in symbols and not "H2" in symbols: # Bonded to Ti 
+        if ('Ti' in symbols) and (not ("H2" in symbols)): # Bonded to Ti 
             prev_neighbours = self.previous_neighbourlist.get_neighbors(oxygen_index)[0]
             diffs = np.setxor1d(neighbours, prev_neighbours)
             # Something changed in its neighbourhood
@@ -48,6 +51,18 @@ class HOchainFinder():
             
         return False
     
+    def get_nearest_symb(self, target_index, timestep, symb='Ti'):
+        snapshot = self.trajectory[timestep]
+        h_neighs = self.distance_neighbourlist.get_neighbors(target_index)[0]
+        dists = snapshot.get_distances(target_index, h_neighs, mic=True)
+        sort_args = np.argsort(dists)
+        dists = dists[sort_args]
+        h_neighs = h_neighs[sort_args]
+
+        for ii_neigh, h_neigh in enumerate(h_neighs):
+            if snapshot[h_neigh].symbol == symb:
+                return dists[ii_neigh]
+
     def find_special_configs(self, is_special=None):
         # Return all special configurations in list of list of np.ndarrays
         # Starting with snapshot 1
@@ -147,6 +162,7 @@ class HOchainFinder():
             
         self.current_neighbourlist.update(self.trajectory[cur_step])
         self.previous_neighbourlist.update(self.trajectory[prev_step])
+        self.distance_neighbourlist.update(self.trajectory[prev_step])
         
         special_config = self.current_neighbourlist.get_neighbors(oxygen_index)[0]
         special_config = np.append(special_config, oxygen_index)
@@ -173,7 +189,8 @@ class HOchainFinder():
             if (('OTi' in cur_form) and not ('H' in cur_form)):
                 # Simply ignore OTiX
                 # If it shouldn't be ignored, just comment return statement
-                return -1
+                # return -1
+                self.backwards_flag = True
                 self.skip_flag = True
     
             if ('HOTi' in cur_form) and (('OTi' in prev_form) and not ('H' in prev_form)):
@@ -193,6 +210,9 @@ class HOchainFinder():
         if ("H2O" in cur_form) and ('HOTi' in prev_form):
             # Special case where path is H20 -> HOTi + H but on other site HOTi + H -> H20
             if not self.skip_flag:
+                self.backwards_flag = False
+                self.skip_flag = False
+                return -7
                 return counter-1
 
         if verbose: # len(which_are_gone):
@@ -214,6 +234,8 @@ class HOchainFinder():
 
             if len(which_are_gone) == 0:
                 # For some reason: no change, usually flyby
+                self.backwards_flag = False
+                self.skip_flag = False
                 return -6
         
         # Now length is definitely one
@@ -221,6 +243,8 @@ class HOchainFinder():
             # print("Flyby")
             # print(self.trajectory[0][which_are_gone].get_chemical_symbols()[0])
             # For some reason: no change, usually flyby
+            self.backwards_flag = False
+            self.skip_flag = False
             return -6
 
             
@@ -228,6 +252,8 @@ class HOchainFinder():
         if len(prev_bound_oxygen) > 1 and (counter == 0):
             gone_symbs = self.trajectory[0][prev_bound_oxygen].get_chemical_formula()
             if len(prev_bound_oxygen) > 2 or gone_symbs!='O2':
+                self.backwards_flag = False
+                self.skip_flag = False
                 return -3
 
             prev_bound_oxygen = np.setdiff1d(prev_bound_oxygen, oxygen_index)
@@ -254,6 +280,8 @@ class HOchainFinder():
             # H20 close to TiO, sharing bond
             if not (cur_bound == 'O2'):
                 # This should never happen
+                self.backwards_flag = False
+                self.skip_flag = False
                 return -4 # fixed
             if verbose:
                 print("Moved to 2 step")
@@ -274,13 +302,30 @@ class HOchainFinder():
         cur_oxy_bond = self.trajectory[cur_step][cur_oxy_bond_inds]
         cur_oxy_symbols = cur_oxy_bond.get_chemical_formula(mode='hill')
         # print(cur_oxy_symbols)
+        self.skip_flag = False
         if 'HOTi' in cur_oxy_symbols:
-            self.skip_flag = False
-            return counter
+            if not self.backwards_flag:
+                if counter == 0:
+                    return 0 # one-step diss
+                oti_dist = self.get_nearest_symb(oxygen_index, prev_step, symb='Ti')
+                if oti_dist < 3:
+                    return 0 # more than one step, but last one was over H2O-Ti
+                else:
+                    return 1 # two-step diss
+            self.backwards_flag = False
+            if counter == 0:
+                return -1
+            oti_dist = self.get_nearest_symb(oxygen_index, prev_step, symb='Ti')
+            # print("NEARST Ti Distance: %f"%oti_dist) 
+            if oti_dist < 3:
+                return 2 # one-step transfer
+            return 3 # two-step transfer
         elif 'H2O' in cur_oxy_symbols:
             if counter < 100:
                 return self.find_hopping(cur_gone_bound_oxygen[0], cur_step, counter=counter+1, prev_step=prev_step, verbose=verbose)
             else:
+                self.backwards_flag = False
+                self.skip_flag = False
                 print(-9, cur_step, prev_step)
                 return -9 # fixed
         else:
@@ -288,6 +333,8 @@ class HOchainFinder():
             self.current_neighbourlist.update(self.trajectory[cur_step+1])
             if not self._is_ti_bonded_and_changed(cur_step+1, oxygen_index):
                 # Isn't special site after all
+                self.backwards_flag = False
+                self.skip_flag = False
                 return -3
             return self.find_hopping(oxygen_index, cur_step+1, counter=counter+1, prev_step=prev_step, verbose=verbose)
 
