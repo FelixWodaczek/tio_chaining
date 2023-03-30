@@ -1,0 +1,2 @@
+test_data/230302_short_traj_publike_all/*.txt filter=lfs diff=lfs merge=lfs -text
+test_data/230302_short_traj_publike_all/*.json filter=lfs diff=lfs merge=lfs -text

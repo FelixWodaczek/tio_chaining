@@ -147,3 +147,7 @@ dmypy.json
 *HILLS
 *COLVAR
 *cellsize
+
+# Don't ignore final results
+!/test_data/230302_short_traj_publike_all/*/*.txt
+!/test_data/230302_short_traj_publike_all/*/*.json
