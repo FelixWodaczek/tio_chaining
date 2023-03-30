@@ -101,11 +101,10 @@ def run_on_file(system_now):
     for i,hh in enumerate(hcoord_now):
         if hh[3] >=5: 
             cls[i] = 0 # in the bulk
-        elif hh[2] > 2: # OH
-            if  hh[3] < 1.5:
-                cls[i] = 1 # H on O(TiO2)
-            else:
-                cls[i] = 2 # OH on Ti
+        elif hh[3] < 1.2 and hh[2] > 1.6:
+            cls[i] = 1 # H on O(TiO2)
+        elif hh[2] > 1.8 and hh[5]<3: # OH on Ti
+            cls[i] = 2 # OH on Ti
         elif hh[5]<3:
             cls[i] = 3 # H2O on Ti
         else:
@@ -139,12 +138,18 @@ def run_on_file(system_now):
     end_configs = []
     wstart = []
     wend = []
+    
+    def update_nlists(i):
+        # not okay to write functions like this
+        cur_nlist.update(trajectory[i])
+        prev_nlist.update(trajectory[i-1])
 
     cl_transition = np.zeros((5,5))
     print(cls.shape)
     # I want to plot the evolution of H
 
     count = 0
+    nl_ts = 0
     for i in range(1,np.shape(cls)[0]): # loop through the frames
         cur_nlist.update(trajectory[i])
         prev_nlist.update(trajectory[i-1])
@@ -154,7 +159,9 @@ def run_on_file(system_now):
             cl_transition[c1,c2] += 1 # h_weights[i,j]/h_weights[i-1,j]
             if (c1 == 1) and (c2 == 4):
                 count += 1
-                
+                if not nl_ts == i:
+                    update_nlists(i)
+                    nl_ts = i
                 # print(f"Timestep: {1000+(10*i):n}")
                 # print(f"Hydro Index: {h_dis_all[i, j, 0]:n}")
                 # if count == 50:
