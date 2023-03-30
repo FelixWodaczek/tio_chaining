@@ -52,6 +52,16 @@ class HOchainFinder():
         return False
     
     def get_nearest_symb(self, target_index, timestep, symb='Ti'):
+        """Calculate nearest symbol to target index in trajectory.
+
+        Args:
+            target_index (int): Index of atom in trajectory.
+            timestep (int): Timestep in trajectory.
+            symb (str, optional): Nearest symbol to find distance to. Defaults to 'Ti'.
+
+        Returns:
+            float: Distance to nearest symbol.
+        """
         snapshot = self.trajectory[timestep]
         h_neighs = self.distance_neighbourlist.get_neighbors(target_index)[0]
         dists = snapshot.get_distances(target_index, h_neighs, mic=True)
@@ -64,6 +74,17 @@ class HOchainFinder():
                 return dists[ii_neigh]
 
     def find_special_configs(self, is_special=None):
+        """Go through trajectory and find all oxygens which should be 'special'.
+        The definition of special is dependent on th
+
+        Args:
+            is_special (func, optional): The function by which to determine whether a configuration is special.
+                Should be of format is_special(timestep: int, index: int) -> bool. 
+                If None is given, HOchainFinder._is_ti_bonded_and_changed is used. Defaults to None.
+
+        Returns:
+            list of lists: list of len(self.trajectory) elements. Each entry contains a list of indices of special sites. Special sites are build as [neighbour_indices, oxygen_index]
+        """
         # Return all special configurations in list of list of np.ndarrays
         # Starting with snapshot 1
         
@@ -157,6 +178,36 @@ class HOchainFinder():
         return config
             
     def find_hopping(self, oxygen_index, cur_step, counter, prev_step=None, verbose=False):
+        """Find the type of proton transfer which happened to produce a special site.
+        Returns an integer depending on the type of proton transfer.
+        One-step vs. n-step is currently not determined by counter but by distance of last oxygen to nearest Ti (rO-Ti).
+        If rO-Ti > 3 (Angstrom): two-step, else one-step.
+
+        Codes can be managed quite flexibly and are currently:
+            -9: Stuck in endless loop looking for final configuration.
+            -8: Not used.
+            -7: Proton transfer of type H20 -> HOTi + H but on other site HOTi + H -> H20
+            -6: No change at site.
+            -5: Not used.
+            -4: H not bound to O.
+            -3: H bound to something other than O or O2.
+            -2: Recombination.
+            -1: Recombination.
+            0: one-step dissociation
+            1: two-step dissociation
+            2: one-step proton transfer
+            3: two-step proton transfer
+
+        Args:
+            oxygen_index (int): Index of observed Oxygen.
+            cur_step (int): Timestep in trajectory.
+            counter (int): Counter of number of traversed oxygen atoms.
+            prev_step (int, optional): Previous timestep in trajectory, if None is given is cur_step-1. Defaults to None.
+            verbose (bool, optional): Verbose option for debugging. Defaults to False.
+
+        Returns:
+            int: Integer code of proton transfer type.
+        """
         if prev_step is None:
             prev_step = cur_step-1
             
@@ -339,6 +390,15 @@ class HOchainFinder():
             return self.find_hopping(oxygen_index, cur_step+1, counter=counter+1, prev_step=prev_step, verbose=verbose)
 
     def analyse_special_configs(self, special_list, run_special: int=None):
+        """Run through list of special configurations and determine the type of proton transport which caused them.
+
+        Args:
+            special_list (list): List returned by HOchainFinder.find_special_configs.
+            run_special (int, optional): Run analysis on a single timestep. Defaults to None.
+
+        Returns:
+            list: Index of hopping. 
+        """
         hop_list = []
         if run_special is None:
             for ii_step, specials in enumerate(special_list):
